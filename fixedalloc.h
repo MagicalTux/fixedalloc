@@ -16,7 +16,7 @@
 // addr, and in the next allocated buffer overwrite it with some shell code).
 // The default mode uses a ring buffer allocated in a separate mmap (which means that even in case of buffer
 // overflow, the write shouldn't reach the next mmap without causing a page fault first)
-#define FIXEDALLOC_CELLMODE
+//#define FIXEDALLOC_CELLMODE
 
 // Lock memory in RAM for better performances (and more memory usage)
 #define FIXEDALLOC_MLOCK

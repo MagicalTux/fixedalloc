@@ -8,6 +8,17 @@
 int main(int argc, char *argv[]) {
 	printf("in main, my pid is %d\n", getpid());
 
+	// random alloc/free (randomized with a fair lottery)
+	void *t1, *t2, *t3, *t4;
+	t1 = malloc_str127();
+	t2 = malloc_str127();
+	t3 = malloc_str127();
+	t4 = malloc_str127();
+	free_str127(t2);
+	free_str127(t4);
+	free_str127(t1);
+	free_str127(t3);
+
 	char *str;
 	for(int i = 0; i < 600; i++) {
 		// store a string in memory

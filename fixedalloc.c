@@ -77,6 +77,7 @@ static inline void fixedalloc_get_more(struct fixedalloc_data *data) {
 #endif
 		return;
 	}
+	// Actually we are not supposed to reach this piece of code anymore, since we prepend data to the ring too now
 #ifdef FIXEDALLOC_DEBUG
 		fprintf(stderr, "FixedAlloc: Appending %ld blocks of memory to %s (reached edge of ring)\n", count, data->name);
 #endif
@@ -196,6 +197,12 @@ static inline void *fixedalloc_malloc(struct fixedalloc_data *data) {
 
 static inline void fixedalloc_free(struct fixedalloc_data *data, void *ptr) {
 	// compute offset
+	if (data->allocated == 0) {
+#ifdef FIXEDALLOC_DEBUG
+		fprintf(stderr, "FixedAlloc: trying to free memory in %s while all blocks are supposed to be free", data->name);
+#endif
+		abort();
+	}
 #ifdef FIXEDALLOC_CELLMODE
 	ptr -= sizeof(fixedalloc_offset_t);
 #endif
@@ -222,8 +229,12 @@ static inline void fixedalloc_free(struct fixedalloc_data *data, void *ptr) {
 	*((fixedalloc_offset_t*)ptr) = data->next;
 	data->next = off;
 #else /* FIXEDALLOC_CELLMODE */
-	// append back data to ring
-	if (data->ring_data_end >= data->ring_end) {
+	// prepend back data to ring, if possible
+	if (data->ring_data_start > data->ring) {
+		*(--data->ring_data_start) = off;
+		--data->allocated;
+		return;
+	} else if (data->ring_data_end >= data->ring_end) {
 		data->ring_data_end = data->ring;
 	}
 	--data->allocated;
