@@ -25,7 +25,7 @@
 static inline void fixedalloc_get_more(struct fixedalloc_data *data) {
 	// allocate more memory
 #ifdef FIXEDALLOC_DEBUG
-	fprintf(stderr, "FixedAlloc: Allocating more memory for %s (currently %ld/%ld)\n", data->name, data->prealloc, data->maxalloc);
+	fprintf(stderr, "FixedAlloc: Allocating more memory for %s (currently %u/%u)\n", data->name, data->prealloc, data->maxalloc);
 #endif
 	if (data->prealloc == data->maxalloc) {
 #ifdef FIXEDALLOC_DEBUG
@@ -33,7 +33,7 @@ static inline void fixedalloc_get_more(struct fixedalloc_data *data) {
 #endif
 		return; // can't allocate more
 	}
-	uintptr_t count = FIXEDALLOC_MORE;
+	fixedalloc_offset_t count = FIXEDALLOC_MORE;
 
 	// check if we are about to allocate more blocks than we can
 	if (count > (data->maxalloc - data->prealloc)) {
@@ -73,13 +73,13 @@ static inline void fixedalloc_get_more(struct fixedalloc_data *data) {
 		memcpy(data->ring_data_end, newbl, count*sizeof(fixedalloc_offset_t));
 		data->ring_data_end += count;
 #ifdef FIXEDALLOC_DEBUG
-		fprintf(stderr, "FixedAlloc: Appended %ld blocks of memory to %s\n", count, data->name);
+		fprintf(stderr, "FixedAlloc: Appended %d blocks of memory to %s\n", count, data->name);
 #endif
 		return;
 	}
 	// Actually we are not supposed to reach this piece of code anymore, since we prepend data to the ring too now
 #ifdef FIXEDALLOC_DEBUG
-		fprintf(stderr, "FixedAlloc: Appending %ld blocks of memory to %s (reached edge of ring)\n", count, data->name);
+		fprintf(stderr, "FixedAlloc: Appending %d blocks of memory to %s (reached edge of ring)\n", count, data->name);
 #endif
 	// need to split (reached end of ring)
 	memcpy(data->ring_data_end, &newbl, (data->ring_end - data->ring_data_end) * sizeof(fixedalloc_offset_t));
@@ -92,9 +92,9 @@ static inline void fixedalloc_get_more(struct fixedalloc_data *data) {
  * Initialize a fixed allocation structure
  * and allocate memory (but not really due to MAP_NORESERVE)
  */
-static inline void fixedalloc_init(struct fixedalloc_data *data, uintptr_t size, uintptr_t prealloc, uintptr_t maxalloc, const char*name) {
+static inline void fixedalloc_init(struct fixedalloc_data *data, size_t size, fixedalloc_offset_t prealloc, fixedalloc_offset_t maxalloc, const char*name) {
 #ifdef FIXEDALLOC_DEBUG
-	fprintf(stderr, "FixedAlloc: initializing storage for type %s (size %lu, preallocating %lu blocks, storage at %p)\n", name, size, prealloc, data);
+	fprintf(stderr, "FixedAlloc: initializing storage for type %s (size %ld, preallocating %d blocks, storage at %p)\n", name, size, prealloc, data);
 #endif
 	data->name = name;
 	data->block_size = size;
@@ -122,7 +122,7 @@ static inline void fixedalloc_init(struct fixedalloc_data *data, uintptr_t size,
 #endif /* FIXEDALLOC_MLOCK */
 
 #ifndef FIXEDALLOC_CELLMODE
-	uintptr_t ring_size = (size+1)*sizeof(fixedalloc_offset_t);
+	size_t ring_size = (size+1)*sizeof(fixedalloc_offset_t);
 	data->ring = mmap(NULL, ring_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_UNINITIALIZED, -1, 0);
 	if (data->ring == MAP_FAILED) {
 #ifdef FIXEDALLOC_DEBUG
@@ -178,6 +178,7 @@ static inline void *fixedalloc_malloc(struct fixedalloc_data *data) {
 #endif
 	void *ptr = data->memory + (data->next * FIXEDALLOC_CTX_BLOCK_SIZE);
 	data->next = *((fixedalloc_offset_t*)ptr);
+	++data->allocated;
 	return ptr+sizeof(fixedalloc_offset_t);
 #else /* FIXEDALLOC_CELLMODE */
 	if (data->ring_data_start == data->ring_data_end) {
@@ -199,7 +200,7 @@ static inline void fixedalloc_free(struct fixedalloc_data *data, void *ptr) {
 	// compute offset
 	if (data->allocated == 0) {
 #ifdef FIXEDALLOC_DEBUG
-		fprintf(stderr, "FixedAlloc: trying to free memory in %s while all blocks are supposed to be free", data->name);
+		fprintf(stderr, "FixedAlloc: trying to free memory in %s while all blocks are supposed to be already free\n", data->name);
 #endif
 		abort();
 	}
@@ -218,10 +219,10 @@ static inline void fixedalloc_free(struct fixedalloc_data *data, void *ptr) {
 #endif
 		abort();
 	}
-	uintptr_t off = (ptr - data->memory) / FIXEDALLOC_CTX_BLOCK_SIZE;
+	fixedalloc_offset_t off = (ptr - data->memory) / FIXEDALLOC_CTX_BLOCK_SIZE;
 	if (off >= data->prealloc) {
 #ifdef FIXEDALLOC_DEBUG
-		fprintf(stderr, "FixedAlloc: trying to free a block of %s outside of range (offset = %ld)\n", data->name, off);
+		fprintf(stderr, "FixedAlloc: trying to free a block of %s outside of range (offset = %u)\n", data->name, off);
 #endif
 		abort();
 	}
