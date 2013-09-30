@@ -1,13 +1,13 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <errno.h>
+#include <string.h> /* memcpy */
 
 #define IN_FIXEDALLOC
 #include "fixedalloc.h"
 
 #ifdef FIXEDALLOC_DEBUG
 #include <stdio.h>
-#include <string.h>
 #endif
 
 #ifndef MAP_UNINITIALIZED
@@ -92,20 +92,15 @@ static inline void fixedalloc_get_more(struct fixedalloc_data *data) {
  * Initialize a fixed allocation structure
  * and allocate memory (but not really due to MAP_NORESERVE)
  */
-static inline void fixedalloc_init(struct fixedalloc_data *data, size_t size, fixedalloc_offset_t prealloc, fixedalloc_offset_t maxalloc, const char*name) {
+static inline void fixedalloc_init(struct fixedalloc_data *data) {
 #ifdef FIXEDALLOC_DEBUG
-	fprintf(stderr, "FixedAlloc: initializing storage for type %s (size %ld, preallocating %d blocks, storage at %p)\n", name, size, prealloc, data);
+	fprintf(stderr, "FixedAlloc: initializing storage for type %s (size %ld, preallocating %d blocks, storage at %p)\n", data->name, data->block_size, data->prealloc, data);
 #endif
-	data->name = name;
-	data->block_size = size;
-	data->allocated = 0;
-	data->prealloc = prealloc;
-	data->maxalloc = maxalloc;
 
-	data->memory = mmap(NULL, FIXEDALLOC_CTX_BLOCK_SIZE * maxalloc, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE|MAP_UNINITIALIZED|MAP_HUGETLB, -1, 0);
+	data->memory = mmap(NULL, FIXEDALLOC_CTX_BLOCK_SIZE * data->maxalloc, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE|MAP_UNINITIALIZED|MAP_HUGETLB, -1, 0);
 	if ((data->memory == MAP_FAILED) && (errno = ENOSYS)) {
 		// retry without MAP_HUGETLB as this kernel could possibly not support it
-		data->memory = mmap(NULL, FIXEDALLOC_CTX_BLOCK_SIZE * maxalloc, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE|MAP_UNINITIALIZED, -1, 0);
+		data->memory = mmap(NULL, FIXEDALLOC_CTX_BLOCK_SIZE * data->maxalloc, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_NORESERVE|MAP_UNINITIALIZED, -1, 0);
 	}
 	if (data->memory == MAP_FAILED) {
 #ifdef FIXEDALLOC_DEBUG
@@ -114,7 +109,7 @@ static inline void fixedalloc_init(struct fixedalloc_data *data, size_t size, fi
 		abort(); // fatal
 	}
 #ifdef FIXEDALLOC_MLOCK
-	if (mlock(data->memory, FIXEDALLOC_CTX_BLOCK_SIZE * prealloc) == -1) { // push [prealloc] blocks into memory for faster execution, if possible
+	if (mlock(data->memory, FIXEDALLOC_CTX_BLOCK_SIZE * data->prealloc) == -1) { // push [prealloc] blocks into memory for faster execution, if possible
 #ifdef FIXEDALLOC_DEBUG
 		fprintf(stderr, "FixedAlloc: failed to mlock memory for %s (not fatal, you may want to check ulimit -l): %s\n", data->name, strerror(errno));
 #endif
@@ -122,7 +117,7 @@ static inline void fixedalloc_init(struct fixedalloc_data *data, size_t size, fi
 #endif /* FIXEDALLOC_MLOCK */
 
 #ifndef FIXEDALLOC_CELLMODE
-	size_t ring_size = (size+1)*sizeof(fixedalloc_offset_t);
+	size_t ring_size = (data->block_size+1)*sizeof(fixedalloc_offset_t);
 	data->ring = mmap(NULL, ring_size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_UNINITIALIZED, -1, 0);
 	if (data->ring == MAP_FAILED) {
 #ifdef FIXEDALLOC_DEBUG
@@ -145,17 +140,17 @@ static inline void fixedalloc_init(struct fixedalloc_data *data, size_t size, fi
 #endif
 
 	// mark the blocks as available in the ring buffer :)
-	for(int i = 0; i < prealloc; i++) data->ring[i] = i;
-	data->ring_data_end = &data->ring[prealloc];
+	for(int i = 0; i < data->prealloc; i++) data->ring[i] = i;
+	data->ring_data_end = &data->ring[data->prealloc];
 #else /* FIXEDALLOC_CELLMODE */
 #ifdef FIXEDALLOC_DEBUG
 	fprintf(stderr, "FixedAlloc: allocated buffers for %s: memory=%p\n", data->name, data->memory);
 #endif
 
 	// initialize the pre allocated blocks
-	for(int i = 0; i < prealloc; i++) {
+	for(int i = 0; i < data->prealloc; i++) {
 		void *pos = data->memory + (i * (size+sizeof(fixedalloc_offset_t)));
-		if (i == prealloc - 1) {
+		if (i == data->prealloc - 1) {
 			// last block
 			*((fixedalloc_offset_t*)pos) = (fixedalloc_offset_t)-1;
 			break;
@@ -166,7 +161,7 @@ static inline void fixedalloc_init(struct fixedalloc_data *data, size_t size, fi
 #endif /* !FIXEDALLOC_CELLMODE */
 }
 
-static inline void *fixedalloc_malloc(struct fixedalloc_data *data) {
+static inline void *fixedalloc_malloc(struct fixedalloc_data * const data) {
 #ifdef FIXEDALLOC_CELLMODE
 	if (data->next == (fixedalloc_offset_t)-1) {
 		// out of memory
