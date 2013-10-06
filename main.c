@@ -20,18 +20,28 @@ int main(int argc, char *argv[]) {
 	free_str127(t3);
 
 	char *str;
+	int freedall = 0;
 	for(int i = 0; i < 600; i++) {
 		// store a string in memory
 		str = malloc_str127();
-		if (str == NULL) break;
+		if (str == NULL) {
+			// out of memory?
+			if (freedall == 0) {
+				freedall = 1;
+				printf("out of memory, freeing all\n");
+				free_all_str127();
+				continue;
+			}
+			break;
+		}
 		strcpy(str, "This is a string stored in memory!");
 		if (i == 0)
 			printf("String stored at %p: %s\n", str, str);
 
-		if (i <= 300)
+		if (i <= 100)
 			free_str127(str);
 
-		if (i == 300)
+		if (i == 100)
 			printf("not freeing memory after that one\n");
 	}
 	//sleep(300);

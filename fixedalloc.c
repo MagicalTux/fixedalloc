@@ -44,6 +44,7 @@ static inline void fixedalloc_get_more(struct fixedalloc_data *data) {
 #ifdef FIXEDALLOC_MLOCK
 	// attempt to mlock that much (failure is not fatal)
 	mlock(data->memory, FIXEDALLOC_CTX_BLOCK_SIZE * (data->prealloc+count));
+#endif /* FIXEDALLOC_MLOCK */
 	for(int i = 0; i < count; i++) {
 		void *pos = data->memory + ((i+data->prealloc) * FIXEDALLOC_CTX_BLOCK_SIZE);
 		if (i == count - 1) {
@@ -55,7 +56,6 @@ static inline void fixedalloc_get_more(struct fixedalloc_data *data) {
 	}
 	data->next = data->prealloc;
 	data->prealloc += count;
-#endif /* FIXEDALLOC_MLOCK */
 
 #else /* FIXEDALLOC_CELLMODE */
 	fixedalloc_offset_t newbl[FIXEDALLOC_MORE];
@@ -139,25 +139,41 @@ static inline void fixedalloc_init(struct fixedalloc_data *data) {
 	fprintf(stderr, "FixedAlloc: allocated buffers for %s: memory=%p ring=%p\n", data->name, data->memory, data->ring);
 #endif
 
-	// mark the blocks as available in the ring buffer :)
-	for(int i = 0; i < data->prealloc; i++) data->ring[i] = i;
-	data->ring_data_end = &data->ring[data->prealloc];
 #else /* FIXEDALLOC_CELLMODE */
 #ifdef FIXEDALLOC_DEBUG
 	fprintf(stderr, "FixedAlloc: allocated buffers for %s: memory=%p\n", data->name, data->memory);
 #endif
+#endif /* !FIXEDALLOC_CELLMODE */
+	fixedalloc_free_all(data);
+}
 
+/**
+ * void fixedalloc_free_all(data)
+ * Free all blocks allocated so far in O(1)
+ *
+ * This method (re)initializes the structure to its original state where no
+ * blocks are allocated
+ */
+static inline void fixedalloc_free_all(struct fixedalloc_data * const data) {
+	data->prealloc = data->init_prealloc;
+	data->allocated = 0;
+#ifdef FIXEDALLOC_CELLMODE
 	// initialize the pre allocated blocks
-	for(int i = 0; i < data->prealloc; i++) {
-		void *pos = data->memory + (i * (size+sizeof(fixedalloc_offset_t)));
-		if (i == data->prealloc - 1) {
+	for(int i = 0; i < data->init_prealloc; i++) {
+		void *pos = data->memory + (i * FIXEDALLOC_CTX_BLOCK_SIZE);
+		if (i == data->init_prealloc - 1) {
 			// last block
 			*((fixedalloc_offset_t*)pos) = (fixedalloc_offset_t)-1;
 			break;
 		}
 		*((fixedalloc_offset_t*)pos) = i+1;
 	}
-
+	data->next = 0;
+#else /* FIXEDALLOC_CELLMODE */
+	// mark the blocks as available in the ring buffer :)
+	for(int i = 0; i < data->init_prealloc; i++) data->ring[i] = i;
+	data->ring_data_start = data->ring;
+	data->ring_data_end = &data->ring[data->init_prealloc];
 #endif /* !FIXEDALLOC_CELLMODE */
 }
 

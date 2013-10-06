@@ -28,5 +28,5 @@
 // large number (memory / object_size). Using a large value in default mode will use a very large
 // amount of memory just for the ring buffer.
 ALLOCATOR_DEFINE(ptr,sizeof(void*),512,65536);
-ALLOCATOR_DEFINE(str127,128,64,250); // allocate a str127 type that stores 128 bytes (127 bytes string + NUL)
+ALLOCATOR_DEFINE(str127,128,64,110); // allocate a str127 type that stores 128 bytes (127 bytes string + NUL)
 
